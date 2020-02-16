@@ -1,9 +1,8 @@
 package v1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -15,14 +14,16 @@ type FunctionSpec struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 	Function string `json:"function"`
+	Identifier string `json:"identifier"`
+	Version string `json:"version"`
 	Runtime string `json:"runtime"`
 	Handler string `json:"handler"`
-	ContentType string `json:"content_type"`
+	ContentType string `json:"contentType"`
 	Timeout string `json:"timeout"`
 	Size *int32 `json:"size"`
-	ExternalService map[string]string `json:"external_service"`
-	DataSource string `json:"data_source"`
-	DataServiceToken string `json:"data_service_token"`
+	ExternalService map[string]string `json:"externalService"`
+	DataSource string `json:"dataSource"`
+	DataServiceToken string `json:"dataServiceToken"`
 }
 
 // FunctionStatus defines the observed state of Function
@@ -30,8 +31,14 @@ type FunctionStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-	PodsStatus map[string]corev1.PodStatus `json:"pod_status"`
-	DeploymentStatus appsv1.DeploymentStatus `json:"deployment_status"`
+	PodsStatus []PodsStatus `json:"podStatus"`
+}
+
+type PodsStatus struct {
+	PodName string `json:"podName"`
+	PodPhase corev1.PodPhase `json:"podPhase"`
+	InitContainerStatuses []corev1.ContainerStatus `json:"initContainerStatuses"`
+	ContainerStatuses []corev1.ContainerStatus	`json:"containerStatuses"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

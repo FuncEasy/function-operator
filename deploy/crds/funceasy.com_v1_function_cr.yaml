@@ -1,7 +1,22 @@
 apiVersion: funceasy.com/v1
 kind: Function
 metadata:
-  name: example-function
+  name: 187c7554ec3c4bad8b0b1914a5dee99e
+  namespace: funceasy
+  labels:
+    app: funceasy_function
+    function: funcName.ns.user
 spec:
   # Add fields here
-  size: 3
+  size: 2
+  function: function-test-text
+  identifier: funcName.ns.user
+  version: 0.0.1
+  handler: test.handle
+  runtime: nodeJS.10
+  timeout: "1000"
+  contentType: text
+  dataServiceToken: aaabbbCCC
+  dataSource: test-database
+  externalService:
+    test-alias: 192.168.0.0:8999

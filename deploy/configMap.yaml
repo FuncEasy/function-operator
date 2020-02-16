@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: funceasy-runtime
+  namespace: funceasy
+data:
+  nodeJS.10: '{"suffix":"js","buildImage":"ziqiancheng/node-build:v10","runImage":"ziqiancheng/node-run:v10"}'
