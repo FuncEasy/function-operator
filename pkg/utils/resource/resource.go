@@ -8,6 +8,7 @@ import (
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"path"
 )
 
@@ -37,7 +38,7 @@ func NewConfigMapForFunctionCR(functionCR *funceasyV1.Function, runtimeConfig *f
 	return configMap, nil
 }
 
-func NewDeploymentForCR(functionCR *funceasyV1.Function, runtimeConfig *funcEasyConfig.FunctionRuntimeConfig) (*appsV1.Deployment, error) {
+func NewDeploymentForFunctionCR(functionCR *funceasyV1.Function, runtimeConfig *funcEasyConfig.FunctionRuntimeConfig) (*appsV1.Deployment, error) {
 	runtimeInfo, runtimeVersion, err := runtimeConfig.GetRuntime(functionCR.Spec.Runtime)
 	if err != nil {
 		return &appsV1.Deployment{}, err
@@ -74,10 +75,37 @@ func NewDeploymentForCR(functionCR *funceasyV1.Function, runtimeConfig *funcEasy
 	return deployment, nil
 }
 
+func NewServiceForFunctionCR(functionCR *funceasyV1.Function) *coreV1.Service {
+	podPort := utils.PodPortsWithDefault(functionCR)
+	podLabels := LabelsForFunctionCR(functionCR)
+	service := &coreV1.Service{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      "function-" + functionCR.Name,
+			Namespace: functionCR.Namespace,
+			Labels:    podLabels,
+		},
+		Spec: coreV1.ServiceSpec{
+			Selector: podLabels,
+			Type:     coreV1.ServiceTypeClusterIP,
+			Ports: []coreV1.ServicePort{
+				coreV1.ServicePort{
+					Name:       "function-port",
+					Protocol:   coreV1.ProtocolTCP,
+					Port:       80,
+					TargetPort: intstr.FromInt(int(podPort)),
+					NodePort:   0,
+				},
+			},
+		},
+	}
+	return service
+}
+
 func LabelsForFunctionCR(functionCR *funceasyV1.Function) map[string]string {
 	return map[string]string{
 		"app":      "funceasy_function",
 		"function": functionCR.Spec.Identifier,
+		"funcId":   functionCR.Name,
 	}
 }
 
@@ -150,12 +178,12 @@ func PodSpecForFunctionCR(functionCR *funceasyV1.Function, runtimeInfo funcEasyC
 
 	podSpec.Containers = []coreV1.Container{
 		coreV1.Container{
-			Name:          "run-" + functionCR.Name,
-			Image:         imageInfo.Image,
-			Ports:         ports,
-			Env:           env,
-			VolumeMounts:  []coreV1.VolumeMount{runtimeVolumeMount, sourceVolumeMount},
-			LivenessProbe: utils.PodLivenessProbe(int(mainPort)),
+			Name:            "run-" + functionCR.Name,
+			Image:           imageInfo.Image,
+			Ports:           ports,
+			Env:             env,
+			VolumeMounts:    []coreV1.VolumeMount{runtimeVolumeMount, sourceVolumeMount},
+			LivenessProbe:   utils.PodLivenessProbe(int(mainPort)),
 			ImagePullPolicy: coreV1.PullAlways,
 		},
 	}
@@ -280,6 +308,7 @@ func RuntimeVolumeMountForFunctionCR(name string) coreV1.VolumeMount {
 		MountPath: "/funceasy",
 	}
 }
+
 func SourceVolumeMountForFunctionCR(name string) coreV1.VolumeMount {
 	return coreV1.VolumeMount{
 		Name:      name + "-src",

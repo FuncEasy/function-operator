@@ -130,6 +130,12 @@ func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{Requeue:requeue}, err
 	}
 
+	err = r.ensureService(instance)
+
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	requeue, err = r.updateStatus(instance, deployment)
 	if requeue {
 		return reconcile.Result{Requeue:requeue}, err
@@ -143,9 +149,9 @@ func (r *ReconcileFunction) ensureDeployment(instance *funceasyv1.Function) (dep
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployFound)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			deployment, err := FunctionResource.NewDeploymentForCR(instance, r.runtimeConfig)
+			deployment, err := FunctionResource.NewDeploymentForFunctionCR(instance, r.runtimeConfig)
 			if err != nil {
-				r.logger.Error("Failed to Set Deployment ", err)
+				r.logger.Error("Failed to Set Deployment ")
 			}
 			if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
 				r.logger.Error("Failed to Set Deployment Reference")
@@ -229,7 +235,7 @@ func getGlobalConfig(c client.Client) (*corev1.ConfigMap, error) {
 	return config, nil
 }
 
-func (r *ReconcileFunction) ensureConfigMap(instance *funceasyv1.Function) (error error) {
+func (r *ReconcileFunction) ensureConfigMap(instance *funceasyv1.Function) error {
 	configMapFound := &corev1.ConfigMap{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, configMapFound)
 	if err != nil {
@@ -254,6 +260,35 @@ func (r *ReconcileFunction) ensureConfigMap(instance *funceasyv1.Function) (erro
 			return nil
 		} else {
 			r.logger.Error("Failed to Get ConfigMap: ", err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *ReconcileFunction) ensureService(instance *funceasyv1.Function) error {
+	serviceFound := &corev1.Service{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{
+		Namespace: instance.Namespace,
+		Name:      "function-" + instance.Name,
+	}, serviceFound)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			service := FunctionResource.NewServiceForFunctionCR(instance)
+			if err := controllerutil.SetControllerReference(instance, service, r.scheme); err != nil {
+				r.logger.Error("Failed to Set Service Reference ", err)
+				return err
+			}
+			r.logger.Info("Creating New Service")
+			err = r.client.Create(context.TODO(), service)
+			if err != nil {
+				r.logger.Error("Failed to Create Service: ", err)
+				return err
+			}
+			r.logger.Info("Create Service Success: ")
+			return nil
+		} else {
+			r.logger.Error("Failed to Get Service: ", err)
 			return err
 		}
 	}
