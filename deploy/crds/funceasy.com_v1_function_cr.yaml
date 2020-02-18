@@ -19,10 +19,13 @@ spec:
         let res = {origin: "origin"};
         _.assign(res, {date: new Date().toTimeString()});
         return res;
+      },
+      test: function (event, context) {
+        return "test"
       }
     }
   identifier: funcName.ns.user
-  version: 0.0.1
+  version: 0.0.2
   handler: test.foo
   runtime: nodeJS:10
   timeout: "1000"
