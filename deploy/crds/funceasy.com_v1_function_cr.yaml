@@ -9,12 +9,41 @@ metadata:
 spec:
   # Add fields here
   size: 2
-  function: function-test-text
+  function: |
+    const _ = require('lodash');
+    module.exports = {
+      foo: function (event, context) {
+        return 123
+      },
+      bar: function (event, context) {
+        let res = {origin: "origin"};
+        _.assign(res, {date: new Date().toTimeString()});
+        return res;
+      }
+    }
   identifier: funcName.ns.user
   version: 0.0.1
-  handler: test.handle
-  runtime: nodeJS.10
+  handler: test.foo
+  runtime: nodeJS:10
   timeout: "1000"
+  deps: |
+    {
+      "name": "example",
+      "version": "1.0.0",
+      "description": "",
+      "main": "index.js",
+      "directories": {
+        "test": "test"
+      },
+      "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+      },
+      "author": "",
+      "license": "ISC",
+      "dependencies": {
+        "lodash": "^4.17.15"
+      }
+    }
   contentType: text
   dataServiceToken: aaabbbCCC
   dataSource: test-database

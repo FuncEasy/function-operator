@@ -1,126 +1,71 @@
 package utils
 
 import (
-	"encoding/json"
-	"errors"
-	funceasyV1 "github.com/FuncEasy/function-operator/pkg/apis/funceasy/v1"
-	appsV1 "k8s.io/api/apps/v1"
+	"fmt"
+	v1 "github.com/FuncEasy/function-operator/pkg/apis/funceasy/v1"
+	funcEasyConfig "github.com/FuncEasy/function-operator/pkg/utils/config"
 	coreV1 "k8s.io/api/core/v1"
-	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"strings"
 )
-type RuntimeConfig struct{
-	Suffix string `json:"suffix"`
-	BuildImage string `json:"buildImage"`
-	RunImage string `json:"runImage"`
-}
-func NewDeploymentForCR(functionCR *funceasyV1.Function) *appsV1.Deployment {
-	labels := LabelsForFunctionCR(functionCR)
-	replicas := functionCR.Spec.Size
-	deployment := &appsV1.Deployment{
-		ObjectMeta: metaV1.ObjectMeta{
-			Name:      functionCR.Name,
-			Namespace: functionCR.Namespace,
-			Labels:    labels,
-		},
-		Spec: appsV1.DeploymentSpec{
-			Replicas: replicas,
-			Selector: &metaV1.LabelSelector{
-				MatchLabels: labels,
-			},
-			Template: coreV1.PodTemplateSpec{
-				ObjectMeta: metaV1.ObjectMeta{
-					Labels: labels,
-				},
-				Spec: coreV1.PodSpec{
-					Volumes: []coreV1.Volume{
-						{
-							Name: "empty",
-							VolumeSource: coreV1.VolumeSource{
-								ConfigMap: &coreV1.ConfigMapVolumeSource{
-									LocalObjectReference: coreV1.LocalObjectReference{Name: functionCR.Name},
-									DefaultMode: int32Ptr(0777),
-								},
-							},
-						},
-					},
-					InitContainers: []coreV1.Container{
-						{
-							Name:    "prepare",
-							Image:   "busybox",
-							Command: []string{"sh", "-c"},
-							Args: []string{"sleep 10"},
-							VolumeMounts: []coreV1.VolumeMount{
-								{
-									Name:      "empty",
-									MountPath: "/write_test",
-								},
-							},
-						},
-					},
-					Containers: []coreV1.Container{
-						{
-							Name:  "function",
-							Image: "ziqiancheng/fusion-gateway",
-							VolumeMounts: []coreV1.VolumeMount{
-								{
-									Name:      "empty",
-									MountPath: "/write_test",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Status: appsV1.DeploymentStatus{},
+
+func SplitHandlerName(handler string) (string, string, error) {
+	str := strings.Split(handler, ".")
+	if len(str) != 2 {
+		return "", "", fmt.Errorf("failed: incorrect handler format ")
 	}
-	return deployment
+
+	return str[0], str[1], nil
 }
 
-func NewConfigMapForFunctionCR(functionCR *funceasyV1.Function, runtimeConfigMap *coreV1.ConfigMap) (*coreV1.ConfigMap, error) {
-	var data map[string]string
-	var binaryData map[string][]byte
-	runtimeConfig, err := getRuntimeConfig(functionCR.Spec.Runtime, runtimeConfigMap)
+func GetFunctionSourceFileName(functionCR *v1.Function, runtimeInfo funcEasyConfig.FunctionRuntimeInfo) (string, error) {
+	fileName, _, err := SplitHandlerName(functionCR.Spec.Handler)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if functionCR.Spec.ContentType == "text" {
-		data = map[string]string{
-			"main."+runtimeConfig.Suffix: functionCR.Spec.Function,
-		}
+		return fileName + runtimeInfo.FileSuffix, nil
 	} else if functionCR.Spec.ContentType == "zip" {
-		binaryData = map[string][]byte{
-			"bundle.zip": []byte(functionCR.Spec.Function),
-		}
-	}
-	configMap := &coreV1.ConfigMap{
-		ObjectMeta: metaV1.ObjectMeta{
-			Name: functionCR.Name,
-			Namespace: functionCR.Namespace,
-		},
-		Data:       data,
-		BinaryData: binaryData,
-	}
-	return configMap, nil
-}
-
-func LabelsForFunctionCR(functionCR *funceasyV1.Function) map[string]string {
-	return map[string]string{
-		"app":      "funceasy_function",
-		"function": functionCR.Spec.Identifier,
-	}
-}
-
-func getRuntimeConfig(runtime string, runtimeConfigMap *coreV1.ConfigMap) (*RuntimeConfig, error)  {
-	rc := &RuntimeConfig{}
-	if _, ok := runtimeConfigMap.Data[runtime]; !ok {
-		return nil, errors.New("Runtime Not Found")
+		return fileName + ".zip", nil
 	} else {
-		err := json.Unmarshal([]byte(runtimeConfigMap.Data[runtime]), rc)
-		if err != nil {
-			return nil, err
-		}
-		return rc, nil
+		return fileName, nil
 	}
 }
-func int32Ptr(i int32) *int32 { return &i }
+
+func ParseEnvToSlice(env map[string]string) []coreV1.EnvVar {
+	var res []coreV1.EnvVar
+	for key, value := range env {
+		res = append(res, coreV1.EnvVar{Name: key, Value: value})
+	}
+	return res
+}
+
+func PodPortsWithDefault(functionCR *v1.Function) int32 {
+	if functionCR.Spec.ExposedPort == 0 {
+		return int32(8080)
+	}
+	return functionCR.Spec.ExposedPort
+}
+
+func PodLivenessProbe(port int) *coreV1.Probe {
+	livenessProbe := &coreV1.Probe{
+		Handler: coreV1.Handler{
+			HTTPGet: &coreV1.HTTPGetAction{
+				Path: "/health",
+				Port: intstr.FromInt(port),
+			},
+		},
+		InitialDelaySeconds: int32(5),
+		PeriodSeconds:       int32(30),
+	}
+	return livenessProbe
+}
+
+func AppendCommand(originCommand string, cmd ...string) string {
+	if len(originCommand) > 0 {
+		return fmt.Sprintf("%s && %s", originCommand, strings.Join(cmd, "&&"))
+	}
+	return strings.Join(cmd, "&&")
+}
+
+func Int32Ptr(i int32) *int32 { return &i }

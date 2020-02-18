@@ -37,6 +37,11 @@ spec:
               type: string
             dataSource:
               type: string
+            deps:
+              type: string
+            exposedPorts:
+              format: int32
+              type: integer
             externalService:
               additionalProperties:
                 type: string
@@ -62,9 +67,6 @@ spec:
               type: string
           required:
           - contentType
-          - dataServiceToken
-          - dataSource
-          - externalService
           - function
           - handler
           - identifier

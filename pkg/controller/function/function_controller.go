@@ -3,27 +3,24 @@ package function
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
-	"reflect"
-
 	funceasyv1 "github.com/FuncEasy/function-operator/pkg/apis/funceasy/v1"
-	"github.com/FuncEasy/function-operator/pkg/utils"
-	corev1 "k8s.io/api/core/v1"
+	funcEasyConfig "github.com/FuncEasy/function-operator/pkg/utils/config"
+	FunctionResource "github.com/FuncEasy/function-operator/pkg/utils/resource"
+	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
-
-var log = logf.Log.WithName("controller_function")
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -75,8 +72,23 @@ var _ reconcile.Reconciler = &ReconcileFunction{}
 type ReconcileFunction struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
+	client        client.Client
+	scheme        *runtime.Scheme
+	config        *corev1.ConfigMap
+	runtimeConfig *funcEasyConfig.FunctionRuntimeConfig
+	logger        *logrus.Entry
+}
+
+func (r *ReconcileFunction) configInit() {
+	logrus.Info("Read Global Config... ")
+	config, err := getGlobalConfig(r.client)
+	if err != nil {
+		logrus.Fatal("Read Global Config Failed", err)
+	}
+	runtimeConfig := funcEasyConfig.NewFunctionRuntimeConfig(config)
+	runtimeConfig.ReadRuntimeConfig()
+	r.config = config
+	r.runtimeConfig = runtimeConfig
 }
 
 // Reconcile reads that state of the cluster for a Function object and makes changes based on the state read
@@ -87,63 +99,38 @@ type ReconcileFunction struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	if r.config == nil || r.runtimeConfig == nil {
+		r.configInit()
+	}
+	logrus.Infof("Read GlobalConfig Success")
+	reqLogger := logrus.WithFields(logrus.Fields{
+		"Request.Namespace": request.Namespace,
+		"Request.Name":      request.Name,
+	})
+	r.logger = reqLogger
 	reqLogger.Info("Reconciling Function")
 
-	// Fetch the Function instance
 	instance := &funceasyv1.Function{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
 			return reconcile.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	//pod := newPodForCR(instance)
-	//
-	//
-	//// Set Function instance as the owner and controller
-	//if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
-	//	return reconcile.Result{}, err
-	//}
-	//
-	//// Check if this Pod already exists
-	//found := &corev1.Pod{}
-	//err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	//if err != nil && errors.IsNotFound(err) {
-	//	reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-	//	err = r.client.Create(context.TODO(), pod)
-	//	if err != nil {
-	//		return reconcile.Result{}, err
-	//	}
-	//
-	//	// Pod created successfully - don't requeue
-	//	return reconcile.Result{}, nil
-	//} else if err != nil {
-	//	return reconcile.Result{}, err
-	//}
-	//
-	//// Pod already exists - don't requeue
-	//reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
-
-	err = r.ensureConfigMap(instance, reqLogger)
+	err = r.ensureConfigMap(instance)
 
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	deployment, requeue ,err := r.ensureDeployment(instance, reqLogger)
+	deployment, requeue ,err := r.ensureDeployment(instance)
 	if requeue {
 		return reconcile.Result{Requeue:requeue}, err
 	}
 
-	requeue, err = r.updateStatus(instance, deployment, reqLogger)
+	requeue, err = r.updateStatus(instance, deployment)
 	if requeue {
 		return reconcile.Result{Requeue:requeue}, err
 	}
@@ -151,55 +138,58 @@ func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Resu
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileFunction) ensureDeployment(instance *funceasyv1.Function, reqLogger logr.Logger) (deployment * appsv1.Deployment, requeue bool, error error)  {
+func (r *ReconcileFunction) ensureDeployment(instance *funceasyv1.Function) (deployment *appsv1.Deployment, requeue bool, error error) {
 	deployFound := &appsv1.Deployment{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployFound)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			deployment := utils.NewDeploymentForCR(instance)
+			deployment, err := FunctionResource.NewDeploymentForCR(instance, r.runtimeConfig)
+			if err != nil {
+				r.logger.Error("Failed to Set Deployment ", err)
+			}
 			if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
-				reqLogger.Error(err, "Failed to Set Deployment Reference", "Deployment.Namespace", instance.Namespace, "Deployment.Name", instance.Name)
+				r.logger.Error("Failed to Set Deployment Reference")
 				return deployFound, true, err
 			}
-			reqLogger.Info("Creating New Deployment", "Deployment.Namespace", instance.Namespace, "Deployment.Name", instance.Name)
+			r.logger.Info("Creating New Deployment")
 			err = r.client.Create(context.TODO(), deployment)
 			if err != nil {
-				reqLogger.Error(err, "Failed to Create Deployment", "Deployment.Namespace", instance.Namespace, "Deployment.Name", instance.Name)
+				r.logger.Error("Failed to Create Deployment")
 				return deployFound, true, err
 			}
-			reqLogger.Info("Create Deployment Success", "Deployment.Namespace", instance.Namespace, "Deployment.Name", instance.Name)
+			r.logger.Info("Create Deployment Success")
 			return deployFound, true, nil
 		} else {
-			reqLogger.Error(err, "Failed to Get Deployment", "Deployment.Namespace", instance.Namespace, "Deployment.Name", instance.Name)
+			r.logger.Error("Failed to Get Deployment", "Deployment.Namespace")
 			return deployFound, true, err
 		}
 	}
-	reqLogger.Info("Deployment already exists", "Deployment.Namespace", deployFound.Namespace, "Deployment.Name", deployFound.Name)
-	reqLogger.Info("Check Deployment Update", "Deployment.Namespace", deployFound.Namespace, "Deployment.Name", deployFound.Name)
+	r.logger.Info("Deployment already exists")
+	r.logger.Info("Check Deployment Update")
 	size := instance.Spec.Size
 	if *deployFound.Spec.Replicas != *size {
 		deployFound.Spec.Replicas = size
 		if err = r.client.Update(context.TODO(), deployFound); err != nil {
-			reqLogger.Error(err, "Failed to update Deployment.", "Deployment.Namespace", deployFound.Namespace, "Deployment.Name", deployFound.Name)
+			r.logger.Error(err, "Failed to update Deployment.")
 			return deployFound, true, err
 		}
-		reqLogger.Info("Update Deployment Success", "Deployment.Namespace", deployFound.Namespace, "Deployment.Name", deployFound.Name)
-		return deployFound,true, nil
+		r.logger.Info("Update Deployment Success")
+		return deployFound, true, nil
 	}
-	reqLogger.Info("Deployment Already Updated", "Deployment.Namespace", deployFound.Namespace, "Deployment.Name", deployFound.Name)
+	r.logger.Info("Deployment Already Updated")
 	return deployFound, false, nil
 }
 
-func (r *ReconcileFunction) updateStatus(instance *funceasyv1.Function, deployment *appsv1.Deployment, reqLogger logr.Logger) (requeue bool, error error) {
-	reqLogger.Info("UpdateStatus...", "Function.Namespace", instance.Namespace, "Function.Name", instance.Name)
-	labels := utils.LabelsForFunctionCR(instance)
+func (r *ReconcileFunction) updateStatus(instance *funceasyv1.Function, deployment *appsv1.Deployment) (requeue bool, error error) {
+	r.logger.Info("UpdateStatus...")
+	labels := FunctionResource.LabelsForFunctionCR(instance)
 	podList := &corev1.PodList{}
 	listOpts := []client.ListOption{
 		client.InNamespace(instance.Namespace),
 		client.MatchingLabels(labels),
 	}
-	if err := r.client.List(context.TODO(), podList, listOpts...); err != nil{
-		reqLogger.Error(err, "UpdateStatus: Failed to list pods.", "Pod.Namespace", instance.Namespace, "Pod.Label", labels)
+	if err := r.client.List(context.TODO(), podList, listOpts...); err != nil {
+		r.logger.Error(err, "UpdateStatus: Failed to list pods.")
 		return true, err
 	}
 
@@ -218,57 +208,52 @@ func (r *ReconcileFunction) updateStatus(instance *funceasyv1.Function, deployme
 		instance.Status.PodsStatus = podListStatus
 		err := r.client.Status().Update(context.TODO(), instance)
 		if err != nil {
-			reqLogger.Error(err, "UpdateStatus: Failed to update Function status.", "Function.Namespace", instance.Namespace, "Function.Name", instance.Name)
+			r.logger.Error("UpdateStatus: Failed to update Function status.")
 			fmt.Println(err)
 			return true, err
 		}
 	}
-	reqLogger.Info("UpdateStatus success", "Function.Namespace", instance.Namespace, "Function.Name", instance.Name)
+	r.logger.Info("UpdateStatus success")
 	return false, nil
 }
 
-func (r *ReconcileFunction) getRuntimeConfig(reqLogger logr.Logger) (*corev1.ConfigMap, error)  {
-	runtimeConfig := &corev1.ConfigMap{}
-	err := r.client.Get(context.TODO(), types.NamespacedName{
+func getGlobalConfig(c client.Client) (*corev1.ConfigMap, error) {
+	config := &corev1.ConfigMap{}
+	err := c.Get(context.TODO(), types.NamespacedName{
 		Namespace: "funceasy",
-		Name:      "funceasy-runtime",
-	}, runtimeConfig)
+		Name:      "funceasy-config",
+	}, config)
 	if err != nil {
-		reqLogger.Error(err, "Failed to get Runtime Config.", "ConfigMap.Namespace", "funceasy", "ConfigMap.Name", "funceasy-runtime")
 		return nil, err
 	}
-	return runtimeConfig, nil
+	return config, nil
 }
 
-func (r *ReconcileFunction) ensureConfigMap(instance *funceasyv1.Function, reqLogger logr.Logger) (error error) {
+func (r *ReconcileFunction) ensureConfigMap(instance *funceasyv1.Function) (error error) {
 	configMapFound := &corev1.ConfigMap{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, configMapFound)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			runtimeConfigMap, err := r.getRuntimeConfig(reqLogger)
+			runtimeConfigMap := r.runtimeConfig
+			configMap, err := FunctionResource.NewConfigMapForFunctionCR(instance, runtimeConfigMap)
 			if err != nil {
-				reqLogger.Error(err, "Failed to Get RuntimeConfigMap", "ConfigMap.Namespace", instance.Namespace, "ConfigMap.Name", instance.Name)
-				return err
-			}
-			configMap, err := utils.NewConfigMapForFunctionCR(instance, runtimeConfigMap)
-			if err != nil {
-				reqLogger.Error(err, "Failed to Set ConfigMap", "ConfigMap.Namespace", instance.Namespace, "ConfigMap.Name", instance.Name)
+				r.logger.Error("Failed to Set ConfigMap: ", err)
 				return err
 			}
 			if err := controllerutil.SetControllerReference(instance, configMap, r.scheme); err != nil {
-				reqLogger.Error(err, "Failed to Set ConfigMap Reference", "ConfigMap.Namespace", configMap.Namespace, "ConfigMap.Name", configMap.Name)
+				r.logger.Error("Failed to Set ConfigMap Reference ", err)
 				return err
 			}
-			reqLogger.Info("Creating New ConfigMap", "ConfigMap.Namespace", configMap.Namespace, "ConfigMap.Name", configMap.Name)
+			r.logger.Info("Creating New ConfigMap")
 			err = r.client.Create(context.TODO(), configMap)
 			if err != nil {
-				reqLogger.Error(err, "Failed to Create ConfigMap", "ConfigMap.Namespace", configMap.Namespace, "ConfigMap.Name", configMap.Name)
+				r.logger.Error("Failed to Create ConfigMap: ", err)
 				return err
 			}
-			reqLogger.Info("Create ConfigMap Success", "ConfigMap.Namespace", configMap.Namespace, "ConfigMap.Name", configMap.Name)
+			r.logger.Info("Create ConfigMap Success: ")
 			return nil
 		} else {
-			reqLogger.Error(err, "Failed to Get ConfigMap", "ConfigMap.Namespace", instance.Namespace, "ConfigMap.Name", instance.Name)
+			r.logger.Error("Failed to Get ConfigMap: ", err)
 			return err
 		}
 	}

@@ -13,17 +13,19 @@ type FunctionSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
-	Function string `json:"function"`
-	Identifier string `json:"identifier"`
-	Version string `json:"version"`
-	Runtime string `json:"runtime"`
-	Handler string `json:"handler"`
-	ContentType string `json:"contentType"`
-	Timeout string `json:"timeout"`
-	Size *int32 `json:"size"`
-	ExternalService map[string]string `json:"externalService"`
-	DataSource string `json:"dataSource"`
-	DataServiceToken string `json:"dataServiceToken"`
+	Function         string            `json:"function"`
+	Identifier       string            `json:"identifier"`
+	Version          string            `json:"version"`
+	Runtime          string            `json:"runtime"`
+	Deps             string            `json:"deps,omitempty"`
+	Handler          string            `json:"handler"`
+	ContentType      string            `json:"contentType"`
+	Timeout          string            `json:"timeout"`
+	Size             *int32            `json:"size"`
+	ExposedPort      int32             `json:"exposedPorts,omitempty"`
+	ExternalService  map[string]string `json:"externalService,omitempty"`
+	DataSource       string            `json:"dataSource,omitempty"`
+	DataServiceToken string            `json:"dataServiceToken,omitempty"`
 }
 
 // FunctionStatus defines the observed state of Function
@@ -35,10 +37,10 @@ type FunctionStatus struct {
 }
 
 type PodsStatus struct {
-	PodName string `json:"podName"`
-	PodPhase corev1.PodPhase `json:"podPhase"`
+	PodName               string                   `json:"podName"`
+	PodPhase              corev1.PodPhase          `json:"podPhase"`
 	InitContainerStatuses []corev1.ContainerStatus `json:"initContainerStatuses"`
-	ContainerStatuses []corev1.ContainerStatus	`json:"containerStatuses"`
+	ContainerStatuses     []corev1.ContainerStatus `json:"containerStatuses"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: funceasy-runtime
+  name: funceasy-config
   namespace: funceasy
 data:
-  nodeJS.10: '{"suffix":"js","buildImage":"ziqiancheng/node-build:v10","runImage":"ziqiancheng/node-run:v10"}'
+  runtime_list: '[{"name":"nodeJS","version":[{"version":"10","images":[{"stage":"install","image":"ziqiancheng/runtime-node-10","cmd": "/npm-install.sh"},{"stage":"run","image":"ziqiancheng/runtime-node-10"}]}],"fileSuffix":".js", "depFileName": "package.json"}]'
