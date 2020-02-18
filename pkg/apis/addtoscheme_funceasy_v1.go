@@ -1,7 +1,7 @@
 package apis
 
 import (
-	v1 "github.com/FuncEasy/function-operator/pkg/apis/funceasy/v1"
+	v1 "github.com/funceasy/function-operator/pkg/apis/funceasy/v1"
 )
 
 func init() {

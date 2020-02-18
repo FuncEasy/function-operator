@@ -2,9 +2,9 @@ package resource
 
 import (
 	"fmt"
-	funceasyV1 "github.com/FuncEasy/function-operator/pkg/apis/funceasy/v1"
-	"github.com/FuncEasy/function-operator/pkg/utils"
-	funcEasyConfig "github.com/FuncEasy/function-operator/pkg/utils/config"
+	funceasyV1 "github.com/funceasy/function-operator/pkg/apis/funceasy/v1"
+	"github.com/funceasy/function-operator/pkg/utils"
+	funcEasyConfig "github.com/funceasy/function-operator/pkg/utils/config"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"

@@ -1,4 +1,4 @@
-module github.com/FuncEasy/function-operator
+module github.com/funceasy/function-operator
 
 go 1.13
 

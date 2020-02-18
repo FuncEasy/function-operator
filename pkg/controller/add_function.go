@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"github.com/FuncEasy/function-operator/pkg/controller/function"
+	"github.com/funceasy/function-operator/pkg/controller/function"
 )
 
 func init() {

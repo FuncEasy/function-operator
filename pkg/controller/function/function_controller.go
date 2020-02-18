@@ -2,10 +2,10 @@ package function
 
 import (
 	"context"
-	funceasyv1 "github.com/FuncEasy/function-operator/pkg/apis/funceasy/v1"
-	"github.com/FuncEasy/function-operator/pkg/utils"
-	funcEasyConfig "github.com/FuncEasy/function-operator/pkg/utils/config"
-	FunctionResource "github.com/FuncEasy/function-operator/pkg/utils/resource"
+	funceasyv1 "github.com/funceasy/function-operator/pkg/apis/funceasy/v1"
+	"github.com/funceasy/function-operator/pkg/utils"
+	funcEasyConfig "github.com/funceasy/function-operator/pkg/utils/config"
+	FunctionResource "github.com/funceasy/function-operator/pkg/utils/resource"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -102,7 +102,7 @@ func (r *ReconcileFunction) configInit() {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	if r.config == nil || r.runtimeConfig == nil || time.Since(configUpdatedTime) > 30 * time.Second {
+	if r.config == nil || r.runtimeConfig == nil || time.Since(configUpdatedTime) > 30*time.Second {
 		logrus.Infof("Read GlobalConfig...")
 		r.configInit()
 		logrus.Infof("Read GlobalConfig Success")
@@ -127,17 +127,17 @@ func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Resu
 
 	configMap, requeue, err := r.ensureConfigMap(instance)
 	if requeue {
-		return reconcile.Result{Requeue:true}, err
+		return reconcile.Result{Requeue: true}, err
 	}
 
-	deployment, requeue ,err := r.ensureDeployment(instance)
+	deployment, requeue, err := r.ensureDeployment(instance)
 	if requeue {
-		return reconcile.Result{Requeue:true}, err
+		return reconcile.Result{Requeue: true}, err
 	}
 
 	requeue, err = r.ensureService(instance)
 	if requeue {
-		return reconcile.Result{Requeue:true}, err
+		return reconcile.Result{Requeue: true}, err
 	}
 
 	err = r.configMapChangeForceUpdate(instance, configMap, deployment)
@@ -148,7 +148,7 @@ func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Resu
 	err = r.updateStatus(instance, deployment)
 	if err != nil {
 		r.logger.Warn("Failed Update Status -> Requeue ")
-		return reconcile.Result{Requeue:true}, nil
+		return reconcile.Result{Requeue: true}, nil
 	}
 
 	return reconcile.Result{}, nil
@@ -296,12 +296,12 @@ func (r *ReconcileFunction) ensureService(instance *funceasyv1.Function) (requeu
 func (r *ReconcileFunction) configMapChangeForceUpdate(instance *funceasyv1.Function, configMapFound *corev1.ConfigMap, deployment *appsv1.Deployment) error {
 	r.logger.Info("Check ConfigMap...")
 	runtimeInfo, _, err := r.runtimeConfig.GetRuntime(instance.Spec.Runtime)
-	if err != nil{
+	if err != nil {
 		r.logger.Error("Check ConfigMap: Failed to Get RuntimeInfo")
 		return err
 	}
 	filename, err := utils.GetFunctionSourceFileName(instance, runtimeInfo)
-	if err != nil{
+	if err != nil {
 		r.logger.Error("Check ConfigMap: Failed to Get filename")
 		return err
 	}

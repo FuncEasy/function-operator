@@ -2,8 +2,8 @@ package utils
 
 import (
 	"fmt"
-	v1 "github.com/FuncEasy/function-operator/pkg/apis/funceasy/v1"
-	funcEasyConfig "github.com/FuncEasy/function-operator/pkg/utils/config"
+	v1 "github.com/funceasy/function-operator/pkg/apis/funceasy/v1"
+	funcEasyConfig "github.com/funceasy/function-operator/pkg/utils/config"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"strings"

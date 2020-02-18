@@ -12,9 +12,9 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 
-	"github.com/FuncEasy/function-operator/pkg/apis"
-	"github.com/FuncEasy/function-operator/pkg/controller"
-	"github.com/FuncEasy/function-operator/version"
+	"github.com/funceasy/function-operator/pkg/apis"
+	"github.com/funceasy/function-operator/pkg/controller"
+	"github.com/funceasy/function-operator/version"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	kubemetrics "github.com/operator-framework/operator-sdk/pkg/kube-metrics"
