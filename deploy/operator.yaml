@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: function-operator
+  namespace: funceasy
 spec:
   replicas: 1
   selector:
@@ -16,7 +17,7 @@ spec:
       containers:
         - name: function-operator
           # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: ziqiancheng/function-operator:v0.0.1
           command:
           - function-operator
           imagePullPolicy: Always
