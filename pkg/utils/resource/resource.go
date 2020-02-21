@@ -217,7 +217,9 @@ func GetPrepareInitContainer(functionCR *funceasyV1.Function, sourceFilename str
 	prepareContainerCMD := ""
 	sourceFile := path.Join(sourceVolumeMount.MountPath, sourceFilename)
 	if functionCR.Spec.ContentType == "zip" {
-		prepareContainerCMD = utils.AppendCommand(prepareContainerCMD, fmt.Sprintf("unzip -o %s -d %s", sourceFile, runtimeVolumeMount.MountPath))
+		decodedFile := path.Join(sourceVolumeMount.MountPath, sourceFilename + ".decoded")
+		prepareContainerCMD = utils.AppendCommand(prepareContainerCMD, fmt.Sprintf("base64 -d < %s > %s", sourceFile, decodedFile))
+		prepareContainerCMD = utils.AppendCommand(prepareContainerCMD, fmt.Sprintf("unzip -o %s -d %s", decodedFile, runtimeVolumeMount.MountPath))
 	} else {
 		targetFile := path.Join(runtimeVolumeMount.MountPath, sourceFilename)
 		prepareContainerCMD = utils.AppendCommand(prepareContainerCMD, fmt.Sprintf("cp %s %s", sourceFile, targetFile))
