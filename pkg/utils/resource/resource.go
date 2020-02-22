@@ -103,9 +103,8 @@ func NewServiceForFunctionCR(functionCR *funceasyV1.Function) *coreV1.Service {
 
 func LabelsForFunctionCR(functionCR *funceasyV1.Function) map[string]string {
 	return map[string]string{
-		"app":      "funceasy_function",
-		"function": functionCR.Spec.Identifier,
-		"funcId":   functionCR.Name,
+		"app":    "funceasy_function",
+		"funcId": functionCR.Name,
 	}
 }
 
@@ -150,22 +149,29 @@ func PodSpecForFunctionCR(functionCR *funceasyV1.Function, runtimeInfo funcEasyC
 		return err
 	}
 	env := []coreV1.EnvVar{
-		coreV1.EnvVar{
+		{
 			Name:  "FUNCTION_HANDLER",
 			Value: handlerName,
 		},
-		coreV1.EnvVar{
+		{
 			Name:  "FUNCTION_MODULE_NAME",
 			Value: moduleName,
 		},
-		coreV1.EnvVar{
+		{
 			Name:  "FUNCTION_RUNTIME",
 			Value: functionCR.Spec.Runtime,
 		},
-		coreV1.EnvVar{
-			Name:      "FUNCTION_TIMEOUT",
-			Value:     functionCR.Spec.Timeout,
-			ValueFrom: nil,
+		{
+			Name:  "FUNCTION_TIMEOUT",
+			Value: functionCR.Spec.Timeout,
+		},
+		{
+			Name:  "DATA_SOURCE_ID",
+			Value: functionCR.Spec.DataSource,
+		},
+		{
+			Name:  "DATA_SOURCE_TOKEN",
+			Value: functionCR.Spec.DataServiceToken,
 		},
 	}
 	mainPort := utils.PodPortsWithDefault(functionCR)
@@ -197,7 +203,7 @@ func InitContainersForPod(functionCR *funceasyV1.Function, sourceFilename string
 	if prepareInitContainer != nil {
 		initContainers = append(initContainers, *prepareInitContainer)
 	}
-	if functionCR.Spec.Deps != "" {
+	if functionCR.Spec.Deps != "none" {
 		installInitContainer := GetInstallInitContainer(runtimeInfo, runtimeVersion, runtimeVolumeMount, sourceVolumeMount)
 		if installInitContainer != nil {
 			initContainers = append(initContainers, *installInitContainer)
@@ -217,7 +223,7 @@ func GetPrepareInitContainer(functionCR *funceasyV1.Function, sourceFilename str
 	prepareContainerCMD := ""
 	sourceFile := path.Join(sourceVolumeMount.MountPath, sourceFilename)
 	if functionCR.Spec.ContentType == "zip" {
-		decodedFile := path.Join(sourceVolumeMount.MountPath, sourceFilename + ".decoded")
+		decodedFile := path.Join(sourceVolumeMount.MountPath, sourceFilename+".decoded")
 		prepareContainerCMD = utils.AppendCommand(prepareContainerCMD, fmt.Sprintf("base64 -d < %s > %s", sourceFile, decodedFile))
 		prepareContainerCMD = utils.AppendCommand(prepareContainerCMD, fmt.Sprintf("unzip -o %s -d %s", decodedFile, runtimeVolumeMount.MountPath))
 	} else {

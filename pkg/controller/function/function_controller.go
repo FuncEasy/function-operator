@@ -69,6 +69,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 // blank assignment to verify that ReconcileFunction implements reconcile.Reconciler
 var _ reconcile.Reconciler = &ReconcileFunction{}
 var configUpdatedTime time.Time = time.Now()
+var requeueForce = false
 
 // ReconcileFunction reconciles a Function object
 type ReconcileFunction struct {
@@ -130,7 +131,7 @@ func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	deployment, requeue, err := r.ensureDeployment(instance)
+	_, requeue, err = r.ensureDeployment(instance)
 	if requeue {
 		return reconcile.Result{Requeue: true}, err
 	}
@@ -140,12 +141,13 @@ func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{Requeue: true}, err
 	}
 
-	err = r.configMapChangeForceUpdate(instance, configMap, deployment)
+	err = r.checkForceUpdate(instance, configMap, requeueForce)
 	if err != nil {
+		requeueForce = true
 		return reconcile.Result{}, err
 	}
 
-	err = r.updateStatus(instance, deployment)
+	err = r.updateStatus(instance)
 	if err != nil {
 		r.logger.Warn("Failed Update Status -> Requeue ")
 		return reconcile.Result{Requeue: true}, nil
@@ -161,44 +163,46 @@ func (r *ReconcileFunction) ensureDeployment(instance *funceasyv1.Function) (dep
 		if errors.IsNotFound(err) {
 			deployment, err := FunctionResource.NewDeploymentForFunctionCR(instance, r.runtimeConfig)
 			if err != nil {
-				r.logger.Error("Failed to Set Deployment ")
+				r.logger.Error("[Deployment] Failed to Set Deployment ")
 			}
 			if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
-				r.logger.Error("Failed to Set Deployment Reference")
+				r.logger.Error("[Deployment] Failed to Set Deployment Reference")
 				return deployFound, true, err
 			}
-			r.logger.Info("Creating New Deployment")
+			r.logger.Info("[Deployment] Creating New Deployment")
 			err = r.client.Create(context.TODO(), deployment)
 			if err != nil {
-				r.logger.Error("Failed to Create Deployment")
+				r.logger.Error("[Deployment] Failed to Create Deployment")
 				return deployFound, true, err
 			}
-			r.logger.Info("Create Deployment Success")
+			r.logger.Info("[Deployment] Create Deployment Success")
 			return deployment, true, nil
 		} else {
-			r.logger.Error("Failed to Get Deployment")
+			r.logger.Error("[Deployment] Failed to Get Deployment")
 			return deployFound, true, err
 		}
 	}
-	r.logger.Info("Deployment already exists")
-	r.logger.Info("Check Deployment Update")
-	size := instance.Spec.Size
-	if *deployFound.Spec.Replicas != *size {
-		r.logger.Infof("Deployment Update: Replicas %d -> %d", *deployFound.Spec.Replicas, *size)
-		deployFound.Spec.Replicas = size
+	r.logger.Info("[Deployment] Deployment already exists")
+	r.logger.Info("[Deployment] Check Deployment Update")
+	needUpdate, err := utils.DeploymentUpdate(instance, deployFound)
+	if err != nil {
+		r.logger.Error(err, "[Deployment] Check Deployment Failed.")
+	}
+	if needUpdate {
+		r.logger.Info("[Deployment] Deployment Updating...")
 		if err = r.client.Update(context.TODO(), deployFound); err != nil {
 			r.logger.Error(err, "Failed to update Deployment.")
 			return deployFound, true, err
 		}
-		r.logger.Info("Update Deployment Success")
+		r.logger.Info("[Deployment] Update Deployment Success")
 		return deployFound, true, nil
 	}
-	r.logger.Info("Deployment Already Updated")
+	r.logger.Info("[Deployment] Deployment Already Updated")
 	return deployFound, false, nil
 }
 
-func (r *ReconcileFunction) updateStatus(instance *funceasyv1.Function, deployment *appsv1.Deployment) error {
-	r.logger.Info("UpdateStatus...")
+func (r *ReconcileFunction) updateStatus(instance *funceasyv1.Function) error {
+	r.logger.Info("[UpdateStatus] UpdateStatus...")
 	labels := FunctionResource.LabelsForFunctionCR(instance)
 	podList := &corev1.PodList{}
 	listOpts := []client.ListOption{
@@ -206,7 +210,7 @@ func (r *ReconcileFunction) updateStatus(instance *funceasyv1.Function, deployme
 		client.MatchingLabels(labels),
 	}
 	if err := r.client.List(context.TODO(), podList, listOpts...); err != nil {
-		r.logger.Error(err, "UpdateStatus: Failed to list pods.")
+		r.logger.Error(err, "[UpdateStatus] Failed to list pods.")
 		return err
 	}
 
@@ -225,11 +229,11 @@ func (r *ReconcileFunction) updateStatus(instance *funceasyv1.Function, deployme
 		instance.Status.PodsStatus = podListStatus
 		err := r.client.Status().Update(context.TODO(), instance)
 		if err != nil {
-			r.logger.Error("UpdateStatus: Failed to update Function status.")
+			r.logger.Error("[UpdateStatus] Failed to update Function status.")
 			return err
 		}
 	}
-	r.logger.Info("UpdateStatus success")
+	r.logger.Info("[UpdateStatus] UpdateStatus success")
 	return nil
 }
 
@@ -241,23 +245,23 @@ func (r *ReconcileFunction) ensureConfigMap(instance *funceasyv1.Function) (conf
 			runtimeConfigMap := r.runtimeConfig
 			configMap, err := FunctionResource.NewConfigMapForFunctionCR(instance, runtimeConfigMap)
 			if err != nil {
-				r.logger.Error("Failed to Set ConfigMap: ", err)
+				r.logger.Error("[ConfigMap] Failed to Set ConfigMap: ", err)
 				return nil, true, err
 			}
 			if err := controllerutil.SetControllerReference(instance, configMap, r.scheme); err != nil {
-				r.logger.Error("Failed to Set ConfigMap Reference ", err)
+				r.logger.Error("[ConfigMap] Failed to Set ConfigMap Reference ", err)
 				return nil, true, err
 			}
-			r.logger.Info("Creating New ConfigMap")
+			r.logger.Info("[ConfigMap] Creating New ConfigMap")
 			err = r.client.Create(context.TODO(), configMap)
 			if err != nil {
-				r.logger.Error("Failed to Create ConfigMap: ", err)
+				r.logger.Error("[ConfigMap] Failed to Create ConfigMap: ", err)
 				return nil, true, err
 			}
-			r.logger.Info("Create ConfigMap Success: ")
+			r.logger.Info("[ConfigMap] Create ConfigMap Success: ")
 			return nil, true, nil
 		} else {
-			r.logger.Error("Failed to Get ConfigMap: ", err)
+			r.logger.Error("[ConfigMap] Failed to Get ConfigMap: ", err)
 			return nil, true, err
 		}
 	}
@@ -274,55 +278,92 @@ func (r *ReconcileFunction) ensureService(instance *funceasyv1.Function) (requeu
 		if errors.IsNotFound(err) {
 			service := FunctionResource.NewServiceForFunctionCR(instance)
 			if err := controllerutil.SetControllerReference(instance, service, r.scheme); err != nil {
-				r.logger.Error("Failed to Set Service Reference ", err)
+				r.logger.Error("[Service] Failed to Set Service Reference ", err)
 				return true, err
 			}
-			r.logger.Info("Creating New Service")
+			r.logger.Info("[Service] Creating New Service")
 			err = r.client.Create(context.TODO(), service)
 			if err != nil {
-				r.logger.Error("Failed to Create Service: ", err)
+				r.logger.Error("[Service] Failed to Create Service: ", err)
 				return true, err
 			}
-			r.logger.Info("Create Service Success: ")
+			r.logger.Info("[Service] Create Service Success: ")
 			return true, nil
 		} else {
-			r.logger.Error("Failed to Get Service: ", err)
+			r.logger.Error("[Service] Failed to Get Service: ", err)
 			return true, err
 		}
 	}
 	return false, nil
 }
 
-func (r *ReconcileFunction) configMapChangeForceUpdate(instance *funceasyv1.Function, configMapFound *corev1.ConfigMap, deployment *appsv1.Deployment) error {
-	r.logger.Info("Check ConfigMap...")
+func (r *ReconcileFunction) checkForceUpdate(instance *funceasyv1.Function, configMapFound *corev1.ConfigMap, requeueForce bool) error {
+	needUpdate := false
+	r.logger.Info("[UpdateForce] Check Update...")
 	runtimeInfo, _, err := r.runtimeConfig.GetRuntime(instance.Spec.Runtime)
 	if err != nil {
-		r.logger.Error("Check ConfigMap: Failed to Get RuntimeInfo")
+		r.logger.Error("[UpdateForce] Check ConfigMap: Failed to Get RuntimeInfo")
 		return err
 	}
-	filename, err := utils.GetFunctionSourceFileName(instance, runtimeInfo)
+	oldHandlerName := configMapFound.Data["handler"]
+	if oldHandlerName != instance.Spec.Handler {
+		r.logger.Info("[UpdateForce] Update ConfigMap: Handler")
+		configMapFound.Data["handler"] = instance.Spec.Handler
+		needUpdate = true
+	}
+	newFilename, err := utils.GetFunctionSourceFileName(instance, runtimeInfo)
 	if err != nil {
-		r.logger.Error("Check ConfigMap: Failed to Get filename")
+		r.logger.Error("[UpdateForce] Update ConfigMap: Failed to Get New Filename")
 		return err
 	}
-	if instance.Spec.Function != configMapFound.Data[filename] || instance.Spec.Deps != configMapFound.Data[runtimeInfo.DepFileName] {
-		r.logger.Infof("Check ConfigMap: Update Deployment Force: Replicas %d->%d", *deployment.Spec.Replicas, 0)
-		deployment.Spec.Replicas = utils.Int32Ptr(0)
-		err := r.client.Update(context.TODO(), deployment)
-		if err != nil {
-			r.logger.Error("Check ConfigMap: Failed to Force Patch Deployment")
-			return err
-		}
-		configMapFound.Data[filename] = instance.Spec.Function
+	oldFilename, err := utils.GetFunctionFileNameWithHandlerName(oldHandlerName, instance, runtimeInfo)
+	if err != nil {
+		r.logger.Error("[UpdateForce] Update ConfigMap: Failed to Get Older Filename")
+		return err
+	}
+	if newFilename != oldFilename {
+		r.logger.Infof("[UpdateForce] Update ConfigMap: Filename %s -> %s", oldFilename, newFilename)
+		configMapFound.Data[newFilename] = configMapFound.Data[oldFilename]
+		delete(configMapFound.Data, oldFilename)
+		needUpdate = true
+	}
+	if instance.Spec.Function != configMapFound.Data[newFilename] || instance.Spec.Deps != configMapFound.Data[runtimeInfo.DepFileName] {
+		configMapFound.Data[newFilename] = instance.Spec.Function
 		configMapFound.Data[runtimeInfo.DepFileName] = instance.Spec.Deps
-		r.logger.Info("Check ConfigMap: Update ConfigMap")
+		needUpdate = true
+	}
+	if needUpdate || requeueForce {
+		r.logger.Info("[UpdateForce] Update ConfigMap...")
 		err = r.client.Update(context.TODO(), configMapFound)
 		if err != nil {
-			r.logger.Error("Check ConfigMap: Failed to Update ConfigMap")
+			r.logger.Error("[UpdateForce] Update ConfigMap: Failed to Update ConfigMap")
 			return err
 		}
+		r.logger.Info("[UpdateForce] Update ConfigMap Complete")
+		r.logger.Infof("[UpdateForce] Update Deployment Force ")
+		deployment := &appsv1.Deployment{}
+		err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployment)
+		if err != nil {
+			r.logger.Error("[UpdateForce] Get Deployment Failed")
+			return err
+		}
+		r.logger.Infof("[UpdateForce] Update Deployment Force: Replicas %d->%d", *deployment.Spec.Replicas, 0)
+		newDeployment, err := FunctionResource.NewDeploymentForFunctionCR(instance, r.runtimeConfig)
+		if err != nil {
+			r.logger.Error("[UpdateForce] Failed to Set New Deployment ")
+			return err
+		}
+		r.logger.Info("[UpdateForce] Updating Deployment")
+		deployment.Spec.Replicas = utils.Int32Ptr(0)
+		deployment.Spec.Template = newDeployment.Spec.Template
+		err = r.client.Update(context.TODO(), deployment)
+		if err != nil {
+			r.logger.Error("[UpdateForce] Failed to Force Update Deployment")
+			return err
+		}
+		requeueForce = false
 	}
-	r.logger.Info("Check ConfigMap: Complete")
+	r.logger.Info("[UpdateForce] Check Update: Complete")
 	return nil
 }
 
