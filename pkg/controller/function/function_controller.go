@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"reflect"
+	"regexp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -58,6 +59,10 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &funceasyv1.Function{},
+	})
+	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &appsv1.ReplicaSet{},
 	})
 	if err != nil {
 		return err
@@ -118,12 +123,28 @@ func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Resu
 	reqLogger.Info("Reconciling Function")
 
 	instance := &funceasyv1.Function{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return reconcile.Result{}, nil
+	theRegexp := regexp.MustCompile(`^(\w+)-(\w+)$`)
+	params := theRegexp.FindStringSubmatch(request.Name)
+	if params != nil {
+		functionCRName := params[1]
+		err := r.client.Get(context.TODO(), types.NamespacedName{
+			Namespace: request.Namespace,
+			Name:      functionCRName,
+		}, instance)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return reconcile.Result{}, nil
+			}
+			return reconcile.Result{}, err
 		}
-		return reconcile.Result{}, err
+	} else {
+		err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return reconcile.Result{}, nil
+			}
+			return reconcile.Result{}, err
+		}
 	}
 
 	configMap, requeue, err := r.ensureConfigMap(instance)
