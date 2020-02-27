@@ -93,7 +93,6 @@ func NewServiceForFunctionCR(functionCR *funceasyV1.Function) *coreV1.Service {
 					Protocol:   coreV1.ProtocolTCP,
 					Port:       80,
 					TargetPort: intstr.FromInt(int(podPort)),
-					NodePort:   0,
 				},
 			},
 		},
@@ -172,6 +171,10 @@ func PodSpecForFunctionCR(functionCR *funceasyV1.Function, runtimeInfo funcEasyC
 		{
 			Name:  "DATA_SOURCE_TOKEN",
 			Value: functionCR.Spec.DataServiceToken,
+		},
+		{
+			Name: "DATA_SOURCE_SERVICE",
+			Value: "data-source-service",
 		},
 	}
 	mainPort := utils.PodPortsWithDefault(functionCR)

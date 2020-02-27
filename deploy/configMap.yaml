@@ -4,4 +4,4 @@ metadata:
   name: funceasy-config
   namespace: funceasy
 data:
-  runtime_list: '[{"name":"nodeJS","version":[{"version":"10","images":[{"stage":"install","image":"ziqiancheng/runtime-node-10","cmd": "/npm-install.sh"},{"stage":"run","image":"ziqiancheng/runtime-node-10"}]}],"fileSuffix":".js", "depFileName": "package.json"}]'
+  runtime_list: '[{"name":"nodeJS","version":[{"version":"10","images":[{"stage":"install","image":"ziqiancheng/runtime-node:10","cmd": "/npm-install.sh"},{"stage":"run","image":"ziqiancheng/runtime-node:10"}]}],"fileSuffix":".js", "depFileName": "package.json"}]'
