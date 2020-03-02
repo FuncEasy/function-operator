@@ -17,7 +17,7 @@ spec:
       containers:
         - name: function-operator
           # Replace this with the built image name
-          image: ziqiancheng/function-operator:latest
+          image: ziqiancheng/function-operator:v1.0.0
           command:
           - function-operator
           imagePullPolicy: Always
