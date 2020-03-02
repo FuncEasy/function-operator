@@ -32,10 +32,12 @@ const (
 )
 
 type FunctionRuntimeInfo struct {
-	Name        string                   `json:"name"`
-	Version     []FunctionRuntimeVersion `json:"version"`
-	DepFileName string                   `json:"depFileName,omitempty"`
-	FileSuffix  string                   `json:"fileSuffix"`
+	Name     string                   `json:"name"`
+	Version  []FunctionRuntimeVersion `json:"version"`
+	Lang     string                   `json:"lang"`
+	DepsName string                   `json:"depsName,omitempty"`
+	DepsLang string                   `json:"depsLang,omitempty"`
+	Suffix   string                   `json:"suffix"`
 }
 
 func NewFunctionRuntimeConfig(globalConfig *v1.ConfigMap) *FunctionRuntimeConfig {

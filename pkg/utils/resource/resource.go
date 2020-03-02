@@ -25,8 +25,8 @@ func NewConfigMapForFunctionCR(functionCR *funceasyV1.Function, runtimeConfig *f
 		"handler": functionCR.Spec.Handler,
 		filename:  functionCR.Spec.Function,
 	}
-	if runtimeInfo.DepFileName != "" {
-		data[runtimeInfo.DepFileName] = functionCR.Spec.Deps
+	if runtimeInfo.DepsName != "" {
+		data[runtimeInfo.DepsName] = functionCR.Spec.Deps
 	}
 	configMap := &coreV1.ConfigMap{
 		ObjectMeta: metaV1.ObjectMeta{
@@ -173,7 +173,7 @@ func PodSpecForFunctionCR(functionCR *funceasyV1.Function, runtimeInfo funcEasyC
 			Value: functionCR.Spec.DataServiceToken,
 		},
 		{
-			Name: "DATA_SOURCE_SERVICE",
+			Name:  "DATA_SOURCE_SERVICE",
 			Value: "data-source-service",
 		},
 	}
@@ -234,8 +234,8 @@ func GetPrepareInitContainer(functionCR *funceasyV1.Function, sourceFilename str
 		prepareContainerCMD = utils.AppendCommand(prepareContainerCMD, fmt.Sprintf("cp %s %s", sourceFile, targetFile))
 	}
 
-	if runtimeInfo.DepFileName != "" {
-		depsFile := path.Join(sourceVolumeMount.MountPath, runtimeInfo.DepFileName)
+	if runtimeInfo.DepsName != "" {
+		depsFile := path.Join(sourceVolumeMount.MountPath, runtimeInfo.DepsName)
 		prepareContainerCMD = utils.AppendCommand(prepareContainerCMD, fmt.Sprintf("cp %s %s", depsFile, runtimeVolumeMount.MountPath))
 	}
 	return &coreV1.Container{
@@ -248,7 +248,7 @@ func GetPrepareInitContainer(functionCR *funceasyV1.Function, sourceFilename str
 }
 
 func GetInstallInitContainer(runtimeInfo funcEasyConfig.FunctionRuntimeInfo, runtimeVersion funcEasyConfig.FunctionRuntimeVersion, runtimeVolumeMount coreV1.VolumeMount, sourceVolumeMount coreV1.VolumeMount) *coreV1.Container {
-	depsFile := path.Join(sourceVolumeMount.MountPath, runtimeInfo.DepFileName)
+	depsFile := path.Join(sourceVolumeMount.MountPath, runtimeInfo.DepsName)
 	ImageInfo, _ := runtimeVersion.GetImage(funcEasyConfig.INSTALL_STAGE)
 	if ImageInfo == nil {
 		return nil

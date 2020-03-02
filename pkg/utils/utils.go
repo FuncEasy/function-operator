@@ -25,7 +25,7 @@ func GetFunctionSourceFileName(functionCR *v1.Function, runtimeInfo funcEasyConf
 		return "", err
 	}
 	if functionCR.Spec.ContentType == "text" {
-		return fileName + runtimeInfo.FileSuffix, nil
+		return fileName + "." + runtimeInfo.Suffix, nil
 	} else if functionCR.Spec.ContentType == "zip" {
 		return fileName + ".zip", nil
 	} else {
@@ -39,7 +39,7 @@ func GetFunctionFileNameWithHandlerName(handler string, functionCR *v1.Function,
 		return "", err
 	}
 	if functionCR.Spec.ContentType == "text" {
-		return fileName + runtimeInfo.FileSuffix, nil
+		return fileName + "." + runtimeInfo.Suffix, nil
 	} else if functionCR.Spec.ContentType == "zip" {
 		return fileName + ".zip", nil
 	} else {
