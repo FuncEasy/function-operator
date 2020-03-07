@@ -8,7 +8,7 @@ metadata:
     function: funcName.ns.user
 spec:
   # Add fields here
-  size: 2
+  size: 1
   function: |
     const _ = require('lodash');
     module.exports = {
@@ -52,3 +52,5 @@ spec:
   dataSource: test-database
   externalService:
     test-alias: 192.168.0.0:8999
+  HPAPrediction: true
+  cpuTargetAverageUtilization: 10

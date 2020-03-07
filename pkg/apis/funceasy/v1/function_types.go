@@ -26,6 +26,11 @@ type FunctionSpec struct {
 	ExternalService  map[string]string `json:"externalService,omitempty"`
 	DataSource       string            `json:"dataSource,omitempty"`
 	DataServiceToken string            `json:"dataServiceToken,omitempty"`
+	CPU string `json:"cpu,omitempty"`
+	Memory string `json:"memory,omitempty"`
+	HPA bool `json:"hpa,omitempty"`
+	HPAPrediction bool `json:"HPAPrediction,omitempty"`
+	CPUTargetAverageUtilization *int32 `json:"cpuTargetAverageUtilization,omitempty"`
 }
 
 // FunctionStatus defines the observed state of Function
@@ -34,6 +39,8 @@ type FunctionStatus struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 	PodsStatus []PodsStatus `json:"podStatus"`
+	Size int32 `json:"size"`
+	Selector string `json:"selector"`
 }
 
 type PodsStatus struct {
@@ -47,6 +54,7 @@ type PodsStatus struct {
 
 // Function is the Schema for the functions API
 // +kubebuilder:subresource:status
+//+kubebuilder:subresource:scale:specpath=.spec.size,statuspath=.status.size,selectorpath=.status.selector
 // +kubebuilder:resource:path=functions,scope=Namespaced
 type Function struct {
 	metav1.TypeMeta   `json:",inline"`

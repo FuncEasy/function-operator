@@ -85,6 +85,11 @@ func (in *FunctionSpec) DeepCopyInto(out *FunctionSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.CPUTargetAverageUtilization != nil {
+		in, out := &in.CPUTargetAverageUtilization, &out.CPUTargetAverageUtilization
+		*out = new(int32)
+		**out = **in
+	}
 	return
 }
 

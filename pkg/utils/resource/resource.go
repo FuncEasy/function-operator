@@ -7,6 +7,8 @@ import (
 	funcEasyConfig "github.com/funceasy/function-operator/pkg/utils/config"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
+	autoscalingV2beta1 "k8s.io/api/autoscaling/v2beta1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"path"
@@ -44,6 +46,12 @@ func NewDeploymentForFunctionCR(functionCR *funceasyV1.Function, runtimeConfig *
 		return &appsV1.Deployment{}, err
 	}
 	labels := LabelsForFunctionCR(functionCR)
+	if functionCR.Spec.HPA || functionCR.Spec.HPAPrediction {
+		labels["HPA"] = "normal"
+		if functionCR.Spec.HPAPrediction {
+			labels["HPA"] = "prediction"
+		}
+	}
 	replicas := functionCR.Spec.Size
 	podSpec := &coreV1.PodSpec{}
 	runtimeVolumeMount := RuntimeVolumeMountForFunctionCR(functionCR.Name)
@@ -52,6 +60,7 @@ func NewDeploymentForFunctionCR(functionCR *funceasyV1.Function, runtimeConfig *
 	if err != nil {
 		return &appsV1.Deployment{}, err
 	}
+
 	deployment := &appsV1.Deployment{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      functionCR.Name,
@@ -98,6 +107,33 @@ func NewServiceForFunctionCR(functionCR *funceasyV1.Function) *coreV1.Service {
 		},
 	}
 	return service
+}
+
+func NewHPAForFunctionCR(functionCR *funceasyV1.Function) *autoscalingV2beta1.HorizontalPodAutoscaler {
+	return &autoscalingV2beta1.HorizontalPodAutoscaler{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name: functionCR.Name,
+			Namespace: functionCR.Namespace,
+		},
+		Spec:       autoscalingV2beta1.HorizontalPodAutoscalerSpec{
+			MinReplicas: utils.Int32Ptr(1),
+			MaxReplicas: 5,
+			ScaleTargetRef: autoscalingV2beta1.CrossVersionObjectReference{
+				Kind:       "Function",
+				Name:       functionCR.Name,
+				APIVersion: "funceasy.com/v1",
+			},
+			Metrics: []autoscalingV2beta1.MetricSpec{
+				{
+					Type:autoscalingV2beta1.ResourceMetricSourceType,
+					Resource: &autoscalingV2beta1.ResourceMetricSource{
+						Name:                     coreV1.ResourceCPU,
+						TargetAverageUtilization: functionCR.Spec.CPUTargetAverageUtilization,
+					},
+				},
+			},
+		},
+	}
 }
 
 func LabelsForFunctionCR(functionCR *funceasyV1.Function) map[string]string {
@@ -147,6 +183,15 @@ func PodSpecForFunctionCR(functionCR *funceasyV1.Function, runtimeInfo funcEasyC
 	if err != nil {
 		return err
 	}
+	var cpu = "100m"
+	if functionCR.Spec.CPU != "" {
+		cpu = functionCR.Spec.CPU
+	}
+	var memory = "64Mi"
+	if functionCR.Spec.Memory != "" {
+		memory = functionCR.Spec.Memory
+	}
+
 	env := []coreV1.EnvVar{
 		{
 			Name:  "FUNCTION_HANDLER",
@@ -163,6 +208,10 @@ func PodSpecForFunctionCR(functionCR *funceasyV1.Function, runtimeInfo funcEasyC
 		{
 			Name:  "FUNCTION_TIMEOUT",
 			Value: functionCR.Spec.Timeout,
+		},
+		{
+			Name: "FUNCTION_MEMORY_LIMIT",
+			Value: memory,
 		},
 		{
 			Name:  "DATA_SOURCE_ID",
@@ -185,6 +234,16 @@ func PodSpecForFunctionCR(functionCR *funceasyV1.Function, runtimeInfo funcEasyC
 		},
 	}
 
+	resources := coreV1.ResourceRequirements{
+		Requests: map[coreV1.ResourceName]resource.Quantity{
+			coreV1.ResourceCPU: resource.MustParse(cpu),
+			coreV1.ResourceMemory: resource.MustParse(memory),
+		},
+		//Limits: map[coreV1.ResourceName]resource.Quantity{
+		//	coreV1.ResourceMemory: resource.MustParse(memory),
+		//},
+	}
+
 	podSpec.Containers = []coreV1.Container{
 		coreV1.Container{
 			Name:            "run-" + functionCR.Name,
@@ -192,6 +251,7 @@ func PodSpecForFunctionCR(functionCR *funceasyV1.Function, runtimeInfo funcEasyC
 			Ports:           ports,
 			Env:             env,
 			VolumeMounts:    []coreV1.VolumeMount{runtimeVolumeMount, sourceVolumeMount},
+			Resources: resources,
 			LivenessProbe:   utils.PodLivenessProbe(int(mainPort)),
 			ImagePullPolicy: coreV1.PullAlways,
 		},

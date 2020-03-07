@@ -11,6 +11,10 @@ spec:
     singular: function
   scope: Namespaced
   subresources:
+    scale:
+      labelSelectorPath: .status.selector
+      specReplicasPath: .spec.size
+      statusReplicasPath: .status.size
     status: {}
   validation:
     openAPIV3Schema:
@@ -31,8 +35,15 @@ spec:
         spec:
           description: FunctionSpec defines the desired state of Function
           properties:
+            HPAPrediction:
+              type: boolean
             contentType:
               type: string
+            cpu:
+              type: string
+            cpuTargetAverageUtilization:
+              format: int32
+              type: integer
             dataServiceToken:
               type: string
             dataSource:
@@ -54,7 +65,11 @@ spec:
               type: string
             handler:
               type: string
+            hpa:
+              type: boolean
             identifier:
+              type: string
+            memory:
               type: string
             runtime:
               type: string
@@ -444,8 +459,15 @@ spec:
                 - podPhase
                 type: object
               type: array
+            selector:
+              type: string
+            size:
+              format: int32
+              type: integer
           required:
           - podStatus
+          - selector
+          - size
           type: object
       type: object
   version: v1

@@ -9,6 +9,8 @@ import (
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	autoscalingV2beta1 "k8s.io/api/autoscaling/v2beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -162,6 +164,11 @@ func (r *ReconcileFunction) Reconcile(request reconcile.Request) (reconcile.Resu
 		return reconcile.Result{Requeue: true}, err
 	}
 
+	requeue, err = r.ensureHPA(instance)
+	if requeue {
+		return reconcile.Result{Requeue: true}, err
+	}
+
 	err = r.checkUpdate(instance, configMap)
 	if err != nil {
 		return reconcile.Result{}, err
@@ -232,11 +239,24 @@ func (r *ReconcileFunction) updateStatus(instance *funceasyv1.Function) error {
 
 	if !reflect.DeepEqual(podListStatus, instance.Status.PodsStatus) {
 		instance.Status.PodsStatus = podListStatus
-		err := r.client.Status().Update(context.TODO(), instance)
-		if err != nil {
-			r.logger.Error("[UpdateStatus] Failed to update Function status.")
-			return err
-		}
+	}
+	deployFound := &appsv1.Deployment{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployFound)
+	if err != nil {
+		r.logger.Error("[UpdateStatus] Failed to Get Deployment.")
+		return err
+	}
+	selector, err := metav1.LabelSelectorAsSelector(deployFound.Spec.Selector)
+	if err != nil {
+		r.logger.Error("[UpdateStatus] Failed to Get Selector.")
+		return err
+	}
+	instance.Status.Selector = selector.String()
+	instance.Status.Size = *deployFound.Spec.Replicas
+	err = r.client.Status().Update(context.TODO(), instance)
+	if err != nil {
+		r.logger.Error("[UpdateStatus] Failed to update Function status.")
+		return err
 	}
 	r.logger.Info("[UpdateStatus] UpdateStatus success")
 	return nil
@@ -298,6 +318,53 @@ func (r *ReconcileFunction) ensureService(instance *funceasyv1.Function) (requeu
 			r.logger.Error("[Service] Failed to Get Service: ", err)
 			return true, err
 		}
+	}
+	return false, nil
+}
+
+func (r *ReconcileFunction) ensureHPA(instance *funceasyv1.Function) (requeue bool, error error) {
+	HPAFound := &autoscalingV2beta1.HorizontalPodAutoscaler{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, HPAFound)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			if instance.Spec.HPA || instance.Spec.HPAPrediction {
+				r.logger.Warn(instance.Spec.CPUTargetAverageUtilization)
+				if instance.Spec.CPUTargetAverageUtilization != nil {
+					hpa := FunctionResource.NewHPAForFunctionCR(instance)
+					if err := controllerutil.SetControllerReference(instance, hpa, r.scheme); err != nil {
+						r.logger.Error("[HPA] Failed to Set HPA Reference")
+						return true, err
+					}
+					r.logger.Info("[HPA] Creating New HPA")
+					err = r.client.Create(context.TODO(), hpa)
+					if err != nil {
+						r.logger.Error("[HPA] Failed to Create HPA")
+						return true, err
+					}
+					r.logger.Info("[HPA] Create HPA Success")
+					return true, nil
+				} else {
+					r.logger.Warn("[HPA] Enabled But Target Not Found")
+				}
+			} else {
+				r.logger.Warn("[HPA] HPA Mode is Not Enabled")
+			}
+		} else {
+			r.logger.Error("[HPA] Failed to Get HPA")
+			return true, err
+		}
+	}
+	r.logger.Info("[HPA] HPA already exists")
+	if *instance.Spec.CPUTargetAverageUtilization != *HPAFound.Spec.Metrics[0].Resource.TargetAverageUtilization {
+		r.logger.Info("[HPA] HPA Update...")
+		HPAFound.Spec.Metrics[0].Resource.TargetAverageUtilization = instance.Spec.CPUTargetAverageUtilization
+		err = r.client.Update(context.TODO(), HPAFound)
+		if err != nil {
+			r.logger.Error( "[HPA] Failed to update HPA.", err)
+			return true, err
+		}
+		r.logger.Info("[HPA] Create HPA Success")
+
 	}
 	return false, nil
 }

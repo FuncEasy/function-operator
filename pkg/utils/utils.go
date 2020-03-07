@@ -89,6 +89,7 @@ func DeploymentUpdate(functionCR *v1.Function, deployFound *appsV1.Deployment) (
 		needUpdate = true
 		deployFound.Spec.Replicas = size
 	}
+
 	if len(deployFound.Spec.Template.Spec.Containers) != 0 {
 		for index, env := range deployFound.Spec.Template.Spec.Containers[0].Env {
 			if env.Name == "FUNCTION_HANDLER" && env.Value != handlerName {
